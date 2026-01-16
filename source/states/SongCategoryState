@@ -1,0 +1,235 @@
+package states;
+
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.group.FlxGroup.FlxTypedGroup;
+import flixel.tweens.FlxEase;
+import flixel.tweens.FlxTween;
+import flixel.util.FlxColor;
+import flixel.util.FlxTimer;
+import flixel.text.FlxText;
+
+#if DISCORD_ALLOWED
+import backend.Discord.DiscordClient;
+#end
+
+import backend.UnlockManager;
+
+enum SongCategory {
+    MAIN;
+    EXTRA;
+    OLD;
+    SECRET;
+}
+
+class SongCategoryState extends MusicBeatState {
+    var categories:Array<{name:String, category:SongCategory, color:FlxColor}> = [
+        {name: 'Main', category: MAIN, color: 0xFF3498DB},      // Blue
+        {name: 'Extra', category: EXTRA, color: 0xFF9B59B6},    // Purple
+        {name: 'Old', category: OLD, color: 0xFFE67E22},        // Orange
+        {name: 'Secret', category: SECRET, color: 0xFFE74C3C}   // Red
+    ];
+    
+    var curSelected:Int = 0;
+    var categorySprites:FlxTypedGroup<FlxSprite>;
+    var categoryTexts:FlxTypedGroup<FlxText>;
+    var bg:FlxSprite;
+    var lockedOverlay:FlxSprite;
+    
+    var selectedSomething:Bool = false;
+    
+    // Visual constants
+    static inline var CARD_WIDTH:Int = 280;
+    static inline var CARD_HEIGHT:Int = 350;
+    static inline var CARD_SPACING:Int = 40;
+
+    override function create() {
+        #if DISCORD_ALLOWED
+        DiscordClient.changePresence("VS Anthony REBOOTED", "Selecting Song Category");
+        #end
+        
+        // Background
+        bg = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, 0xFF1A1A2E);
+        add(bg);
+        
+        // Create category cards
+        createCategoryCards();
+        
+        // Initial selection
+        changeSelection(0);
+        
+        super.create();
+    }
+    
+    function createCategoryCards() {
+        categorySprites = new FlxTypedGroup<FlxSprite>();
+        categoryTexts = new FlxTypedGroup<FlxText>();
+        
+        var totalWidth = (CARD_WIDTH * categories.length) + (CARD_SPACING * (categories.length - 1));
+        var startX = (FlxG.width - totalWidth) / 2;
+        var yPos = (FlxG.height - CARD_HEIGHT) / 2;
+        
+        for (i in 0...categories.length) {
+            var cat = categories[i];
+            var xPos = startX + (i * (CARD_WIDTH + CARD_SPACING));
+            
+            // Card background
+            var card = new FlxSprite(xPos, yPos);
+            card.makeGraphic(CARD_WIDTH, CARD_HEIGHT, cat.color);
+            card.ID = i;
+            
+            // Add rounded corner effect (optional - using alpha for now)
+            card.alpha = 0.8;
+            categorySprites.add(card);
+            
+            // Category name text
+            var nameText = new FlxText(xPos, yPos + CARD_HEIGHT - 60, CARD_WIDTH, cat.name);
+            nameText.setFormat(Paths.font("vcr.ttf"), 32, FlxColor.WHITE, CENTER);
+            nameText.ID = i;
+            categoryTexts.add(nameText);
+            
+            // Lock icon for secret if not unlocked
+            if (cat.category == SECRET) {
+                var hasUnlockedSecrets = UnlockManager.hasAnySecretUnlocked();
+                if (!hasUnlockedSecrets) {
+                    // Dark overlay
+                    var lockOverlay = new FlxSprite(xPos, yPos);
+                    lockOverlay.makeGraphic(CARD_WIDTH, CARD_HEIGHT, 0x99000000);
+                    add(lockOverlay);
+                    
+                    // Lock text
+                    var lockText = new FlxText(xPos, yPos + CARD_HEIGHT / 2 - 20, CARD_WIDTH, "???");
+                    lockText.setFormat(Paths.font("vcr.ttf"), 48, FlxColor.WHITE, CENTER);
+                    add(lockText);
+                }
+            }
+        }
+        
+        add(categorySprites);
+        add(categoryTexts);
+        
+        // Instructions text
+        var instructText = new FlxText(0, FlxG.height - 60, FlxG.width, "Use LEFT/RIGHT to select, ENTER to confirm, ESCAPE to go back");
+        instructText.setFormat(Paths.font("vcr.ttf"), 18, FlxColor.WHITE, CENTER);
+        instructText.alpha = 0.7;
+        add(instructText);
+    }
+
+    override function update(elapsed:Float) {
+        if (!selectedSomething) {
+            // Navigation
+            if (controls.UI_LEFT_P) {
+                changeSelection(-1);
+                FlxG.sound.play(Paths.sound('scrollMenu'));
+            }
+            if (controls.UI_RIGHT_P) {
+                changeSelection(1);
+                FlxG.sound.play(Paths.sound('scrollMenu'));
+            }
+            
+            // Selection
+            if (controls.ACCEPT) {
+                selectCategory();
+            }
+            
+            // Back
+            if (controls.BACK) {
+                FlxG.sound.play(Paths.sound('cancelMenu'));
+                MusicBeatState.switchState(new MainMenuState());
+            }
+            
+            // Secret code input handling
+            UnlockManager.handleSecretInput(FlxG.keys);
+        }
+        
+        super.update(elapsed);
+    }
+    
+    function changeSelection(change:Int = 0) {
+        curSelected += change;
+        
+        if (curSelected >= categories.length)
+            curSelected = 0;
+        if (curSelected < 0)
+            curSelected = categories.length - 1;
+        
+        // Update visual selection
+        categorySprites.forEach(function(card:FlxSprite) {
+            if (card.ID == curSelected) {
+                FlxTween.cancelTweensOf(card);
+                FlxTween.cancelTweensOf(card.scale);
+                FlxTween.tween(card.scale, {x: 1.1, y: 1.1}, 0.15, {ease: FlxEase.backOut});
+                FlxTween.tween(card, {y: (FlxG.height - CARD_HEIGHT) / 2 - 20}, 0.15, {ease: FlxEase.quadOut});
+                card.alpha = 1.0;
+            } else {
+                FlxTween.cancelTweensOf(card);
+                FlxTween.cancelTweensOf(card.scale);
+                FlxTween.tween(card.scale, {x: 1.0, y: 1.0}, 0.15, {ease: FlxEase.quadOut});
+                FlxTween.tween(card, {y: (FlxG.height - CARD_HEIGHT) / 2}, 0.15, {ease: FlxEase.quadOut});
+                card.alpha = 0.6;
+            }
+        });
+        
+        categoryTexts.forEach(function(txt:FlxText) {
+            txt.alpha = txt.ID == curSelected ? 1.0 : 0.6;
+        });
+        
+        // Update background color to match selection (subtle)
+        var targetColor = categories[curSelected].color;
+        var dimmedColor = FlxColor.interpolate(0xFF1A1A2E, targetColor, 0.15);
+        FlxTween.cancelTweensOf(bg);
+        FlxTween.color(bg, 0.3, bg.color, dimmedColor);
+    }
+    
+    function selectCategory() {
+        var selectedCat = categories[curSelected];
+        
+        // Check if secret is locked
+        if (selectedCat.category == SECRET && !UnlockManager.hasAnySecretUnlocked()) {
+            FlxG.sound.play(Paths.sound('cancelMenu'));
+            
+            // Shake the card
+            var card = categorySprites.members[curSelected];
+            FlxTween.shake(card, 0.02, 0.3);
+            
+            // Show hint text briefly
+            var hintText = new FlxText(0, FlxG.height / 2, FlxG.width, "Find the secrets first...");
+            hintText.setFormat(Paths.font("vcr.ttf"), 24, FlxColor.RED, CENTER);
+            hintText.alpha = 0;
+            add(hintText);
+            
+            FlxTween.tween(hintText, {alpha: 1}, 0.2, {
+                onComplete: function(_) {
+                    FlxTween.tween(hintText, {alpha: 0}, 0.3, {
+                        startDelay: 1.0,
+                        onComplete: function(_) {
+                            remove(hintText);
+                            hintText.destroy();
+                        }
+                    });
+                }
+            });
+            
+            return;
+        }
+        
+        selectedSomething = true;
+        FlxG.sound.play(Paths.sound('confirmMenu'));
+        
+        // Flash effect
+        categorySprites.forEach(function(card:FlxSprite) {
+            if (card.ID == curSelected) {
+                FlxTween.tween(card, {alpha: 0}, 0.3, {
+                    ease: FlxEase.quadOut,
+                    type: PINGPONG
+                });
+            } else {
+                FlxTween.tween(card, {alpha: 0}, 0.2, {ease: FlxEase.quadOut});
+            }
+        });
+        
+        new FlxTimer().start(0.4, function(_) {
+            MusicBeatState.switchState(new CustomFreeplayState(selectedCat.category));
+        });
+    }
+}
