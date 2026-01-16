@@ -13,9 +13,27 @@ import flixel.util.FlxStringUtil;
 class DiscordClient
 {
 	public static var isInitialized:Bool = false;
-	private inline static final _defaultID:String = "863222024192262205";
+	
+	// ============================================
+	// VS ANTHONY REBOOTED - DISCORD RPC CONFIG
+	// ============================================
+	// To set up your own Discord RPC:
+	// 1. Go to https://discord.com/developers/applications
+	// 2. Click "New Application" and name it "VS Anthony REBOOTED"
+	// 3. Copy the Application ID and paste it below
+	// 4. Go to "Rich Presence" > "Art Assets" and upload:
+	//    - A large image named "icon" (main game icon)
+	//    - Optional small images for different states
+	// ============================================
+	
+	private inline static final _defaultID:String = "YOUR_DISCORD_APP_ID_HERE"; // Replace with your Discord App ID
 	public static var clientID(default, set):String = _defaultID;
 	private static var presence:DiscordPresence = new DiscordPresence();
+	
+	// Game info for RPC
+	public static final gameTitle:String = "VS Anthony REBOOTED";
+	public static final gameVersion:String = "1.0.0";
+	
 	// hides this field from scripts and reflection in general
 	@:unreflective private static var __thread:Thread;
 
@@ -98,7 +116,23 @@ class DiscordClient
 		isInitialized = true;
 	}
 
-	public static function changePresence(details:String = 'In the Menus', ?state:String, ?smallImageKey:String, ?hasStartTimestamp:Bool, ?endTimestamp:Float, largeImageKey:String = 'icon')
+	/**
+	 * Update Discord Rich Presence
+	 * @param details Main text (e.g., "Playing: Song Name")
+	 * @param state Secondary text (e.g., "Score: 12345")
+	 * @param smallImageKey Small icon key (upload to Discord Developer Portal)
+	 * @param hasStartTimestamp Whether to show elapsed time
+	 * @param endTimestamp If set, shows countdown timer
+	 * @param largeImageKey Large icon key (default: "icon")
+	 */
+	public static function changePresence(
+		details:String = 'In the Menus', 
+		?state:String, 
+		?smallImageKey:String, 
+		?hasStartTimestamp:Bool, 
+		?endTimestamp:Float, 
+		largeImageKey:String = 'icon'
+	)
 	{
 		var startTimestamp:Float = 0;
 		if (hasStartTimestamp) startTimestamp = Date.now().getTime();
@@ -108,13 +142,52 @@ class DiscordClient
 		presence.details = details;
 		presence.smallImageKey = smallImageKey;
 		presence.largeImageKey = largeImageKey;
-		presence.largeImageText = "Engine Version: " + states.MainMenuState.psychEngineVersion;
+		presence.largeImageText = gameTitle + " v" + gameVersion; // Shows "VS Anthony REBOOTED v1.0.0"
 		// Obtained times are in milliseconds so they are divided so Discord can use it
 		presence.startTimestamp = Std.int(startTimestamp / 1000);
 		presence.endTimestamp = Std.int(endTimestamp / 1000);
 		updatePresence();
 
 		//trace('Discord RPC Updated. Arguments: $details, $state, $smallImageKey, $hasStartTimestamp, $endTimestamp, $largeImageKey');
+	}
+	
+	// ============================================
+	// CONVENIENCE METHODS FOR VS ANTHONY REBOOTED
+	// ============================================
+	
+	/** Show "In Main Menu" presence */
+	public static function setMenuPresence()
+	{
+		changePresence("In the Menus", "Selecting a song...");
+	}
+	
+	/** Show presence for browsing song categories */
+	public static function setCategoryPresence(category:String)
+	{
+		changePresence("Browsing Songs", category + " Category");
+	}
+	
+	/** Show presence when playing a song */
+	public static function setPlayingPresence(songName:String, difficulty:String, ?score:Int)
+	{
+		var state = difficulty;
+		if (score != null && score > 0) {
+			state = '$difficulty | Score: $score';
+		}
+		changePresence('Playing: $songName', state, null, true);
+	}
+	
+	/** Show presence for results screen */
+	public static function setResultsPresence(songName:String, score:Int, accuracy:Float)
+	{
+		var accString = Std.string(Math.floor(accuracy * 100) / 100) + "%";
+		changePresence('Finished: $songName', 'Score: $score | $accString');
+	}
+	
+	/** Show presence in options menu */
+	public static function setOptionsPresence()
+	{
+		changePresence("In Options", "Configuring settings...");
 	}
 
 	public static function updatePresence()
@@ -140,18 +213,6 @@ class DiscordClient
 		}
 		return newID;
 	}
-
-	#if MODS_ALLOWED
-	public static function loadModRPC()
-	{
-		var pack:Dynamic = Mods.getPack();
-		if(pack != null && pack.discordRPC != null && pack.discordRPC != clientID)
-		{
-			clientID = pack.discordRPC;
-			//trace('Changing clientID! $clientID, $_defaultID');
-		}
-	}
-	#end
 
 	#if LUA_ALLOWED
 	public static function addLuaCallbacks(lua:State)
